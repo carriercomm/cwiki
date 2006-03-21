@@ -1,7 +1,23 @@
 #=======================================================================
-#	$Id: UiAtis.pm,v 1.1 2005/09/22 14:49:48 pythontech Exp $
+#	$Id: UiAtis.pm,v 1.2 2006/03/21 14:09:25 pythontech Exp $
 #	Presentation - Atis style
+#	Copyright (C) 2000-2005  Python Technology Limited
 #
+#	This program is free software; you can redistribute it and/or
+#	modify it under the terms of the GNU General Public License
+#	as published by the Free Software Foundation; either version 2
+#	of the License, or (at your option) any later version.
+#
+#	This program is distributed in the hope that it will be useful,
+#	but WITHOUT ANY WARRANTY; without even the implied warranty of
+#	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#	GNU General Public License for more details.
+#
+#	You should have received a copy of the GNU General Public License
+#	along with this program; if not, write to the Free Software
+#	Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  
+#	02111-1307, USA.
+#-----------------------------------------------------------------------
 #	$ui = new UiAtis(Header => "...", Footer => "...",
 #			 LogoImage => "...", LogoUrl => "...");
 #	$ui->view($htmlFrag);
@@ -19,6 +35,25 @@ sub new {
 sub view {
     my($self, $topicHtml) = @_;
     my $html = $self->_header() . $topicHtml . $self->_footer();
+    return $html;
+}
+
+#-----------------------------------------------------------------------
+#	Not implemented yet - warn if someone else is editing
+#-----------------------------------------------------------------------
+sub warnlock {
+    my($self, $lock) = @_;
+    my($time,$user) = split(/ /,$lock,2);
+    my($yr,$mn,$dy,$hr,$mi) = (localtime($time))[5,4,3,2,1];
+    my $when = sprintf("%04d-%02d-%02d %02d:%02d",
+		       1900+$yr, $mn+1, $dy, $hr, $mi);
+    my $html = $::query->start_html('-title' => "wiki: $::topic is locked",
+				    '-BGCOLOR' => 'yellow');
+    $html .= "<h1>$::topic is locked</h1>\n";
+    $html .= "$user started editing $::topic at $when.<p>\n";
+    $html .= $::wiki->server->link('view', Html => 'Abandon edit'). "<br />\n";
+    $html .= $::wiki->server->link('editforce', Html => 'Steal lock'). "<br />\n";
+    $html .= $::query->end_html;
     return $html;
 }
 
@@ -117,8 +152,12 @@ sub error {
 
 sub _header {
     my($self) = @_;
-    my $html = $::query->start_html('-title' => "wiki: $::topic",
+    my $htopic = $::wiki->fmt->topicHtml($::topic);
+    my $html = $::query->start_html('-title' => "wiki: $htopic",
 				    '-bgcolor' => 'white');
+    if (defined($self->{'Preamble'})) {
+	$html .= $self->{'Preamble'};
+    }
     my $home;
     if (defined($self->{'LogoImage'})) {
 	$home = $self->{'LogoImage'};
@@ -137,10 +176,21 @@ sub _header {
 sub _footer {
     my($self, $topic) = @_;
     my $html;
+    my $data = $::wiki->archive->getTopic($topic);
+    my $time = $data->{'date'};
+    my($sec,$min,$hr,$day,$mon,$yr) = localtime($time);
+    my $date = sprintf("%d %s %d",
+		       $day,
+		       (qw(January February March 
+			   April May June 
+			   July August September
+			   October November December))[$mon],
+		       1900+$yr);
     $html .= join('',
 		  "<hr />\n",
 		  $::query->startform(-target => "_top", -method=>'GET',
 				      -action=>$::wiki->server->url('search')),
+		  ($time && "<em>Last modified by $data->{'logname'} on $date</em><br />"),
 		  $::wiki->server->fields('search'),
 		  $::wiki->server->link('edit', Topic => $topic, Html => "Edit"),
 		  " this page<br>\n",
@@ -148,6 +198,7 @@ sub _footer {
 		  " this page<br />\n",
 		  $::wiki->server->link('askrename', Topic => $topic, Html => "Rename"),
 		  " this page<br />\n",
+		  "Export as ", $::wiki->server->link('latex', Topic => $topic, Html => "LaTeX fragment"),"<br />\n",
 		  "Search:",
 		  $::query->textfield(-name => 'search', -size => 20),
 		  $::query->endform,
