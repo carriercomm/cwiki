@@ -1,7 +1,23 @@
 #=======================================================================
-#	$Id: Server.pm,v 1.1 2005/09/22 14:49:36 pythontech Exp $
+#	$Id: Server.pm,v 1.2 2006/03/21 14:08:33 pythontech Exp $
 #	Server configuration
+#	Copyright (C) 2005  Python Technology Limited
 #
+#	This program is free software; you can redistribute it and/or
+#	modify it under the terms of the GNU General Public License
+#	as published by the Free Software Foundation; either version 2
+#	of the License, or (at your option) any later version.
+#
+#	This program is distributed in the hope that it will be useful,
+#	but WITHOUT ANY WARRANTY; without even the implied warranty of
+#	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#	GNU General Public License for more details.
+#
+#	You should have received a copy of the GNU General Public License
+#	along with this program; if not, write to the Free Software
+#	Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  
+#	02111-1307, USA.
+#-----------------------------------------------------------------------
 #	$srv = new Server(Prefix => "http://myhost/wiki",
 #			  Base => "/!TOPIC!?action=!METHOD!",
 #			  View => "/!TOPIC!",
@@ -16,7 +32,8 @@
 #			  View => "/!AREA!/!TOPIC!.html");
 #=======================================================================
 package Cwiki::Server;
-require strict;
+use strict;
+use Cwiki::Html;
 
 sub new {
     my($class, %patterns) = @_;
@@ -26,8 +43,10 @@ sub new {
 
 sub url {
     my($self, $method, %override) = @_;
+    my $accessbase = ($method =~ /^(edit|save|askrename|rename)$/) 
+	? "WriteBase" : "ReadBase";
     my $Method = ucfirst $method;
-    my $pat = $self->{$Method} || $self->{Base} ||
+    my $pat = $self->{$Method} || $self->{$accessbase} || $self->{Base} ||
 	die "No URL pattern for $method\n";
     return $self->{'Prefix'} . &::tokenSubst($pat, Method => $method, %override);
 }
@@ -35,7 +54,7 @@ sub url {
 sub link {
     my($self, $method, %override) = @_;
     my $topic = $override{Topic} || $::topic;
-    my $html = $override{Html} || &h($topic);
+    my $html = $override{Html} || $::wiki->fmt->topicHtml($topic);
     return "<a href=\"" . &h($self->url($method, %override)) . "\">$html</a>";
 }
 
@@ -54,12 +73,7 @@ sub fields {
 }
 
 sub h {
-    my($text) = @_;
-    $text =~ s/\&/\&amp;/g;
-    $text =~ s/\</\&lt;/g;
-    $text =~ s/\>/\&gt;/g;
-    $text =~ s/\"/\&quot;/g;
-    return $text;
+    &Cwiki::Html::quoteEnt(shift);
 }
 
 1;
