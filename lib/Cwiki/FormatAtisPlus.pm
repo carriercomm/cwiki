@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: FormatAtisPlus.pm,v 1.2 2006/03/21 14:06:19 pythontech Exp $
+#	$Id: FormatAtisPlus.pm,v 1.3 2006/12/06 11:12:22 pythontech Exp $
 #	Wiki formatting module
 #	Copyright (C) 2000-2005  Python Technology Limited
 #
@@ -273,7 +273,7 @@ sub toLaTeX {
 	    $ret .= $self->_wiki2latex($');
 	} elsif (/^\|/) {
 	    $ret .= &_latexLevel(\@stack, \$para, "verbatim", 1);
-	    $ret .= &LaTeX::quoteEnt($');
+	    $ret .= &Cwiki::LaTeX::quoteEnt($');
 	} else {
 	    $ret .= &_latexLevel(\@stack, \$para, "", 0);
 	    $ret .= $self->_wiki2latex($_);
@@ -327,7 +327,7 @@ sub _wiki2latex {
 	    (\$?)($pat)/x)) {
 	die "Cwiki::FormatAtisPlus::_wiki2latex looping" if ++$loop == 100;
 #	print "match: $&\n";
-	$ret .= &LaTeX::quoteEnt($`);
+	$ret .= &Cwiki::LaTeX::quoteEnt($`);
 	$text = $';
 	if ($url1) {
 	    if ($url1 eq 'http' && $url2 =~ /\.(gif|jpg|png)$/) {
@@ -337,7 +337,7 @@ sub _wiki2latex {
 		$url2 =~ s|^//localhost/|/| if $url1 eq 'file';
 		# Suppress URL scheme if implicitly clear to reader
 		$scheme = "" if $scheme =~ /news|mailto/;
-		$url2 = LaTeX::quoteEnt($url2);
+		$url2 = &Cwiki::LaTeX::quoteEnt($url2);
 		$ret .= "$scheme$url2";
 	    }
 	} elsif ($b) {
@@ -351,10 +351,10 @@ sub _wiki2latex {
 	} elsif ($link) {
 	    $link =~ s/_/ /g;
 	    $link =~ s/^ //;  $link =~ s/ $//;
-	    $ret .= &LaTeX::quoteEnt($link);
+	    $ret .= &Cwiki::LaTeX::quoteEnt($link);
 	}
     }
-    $ret .= &LaTeX::quoteEnt($text);
+    $ret .= &Cwiki::LaTeX::quoteEnt($text);
     return $ret;
 }
 
