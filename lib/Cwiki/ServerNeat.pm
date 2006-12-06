@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: ServerNeat.pm,v 1.1 2006/03/21 14:11:29 pythontech Exp $
+#	$Id: ServerNeat.pm,v 1.2 2006/12/06 09:15:55 pythontech Exp $
 #	Server configuration - neat
 #	Copyright (C) 2006  Python Technology Limited
 #
@@ -80,6 +80,9 @@ sub action_topic {
 	return ('search', undef);
     } elsif (my($topic) = $path =~ m!^/([^@/][^/]*)$!) {
 	return ('view', ux($topic));
+    } elsif ($path eq '') {
+	# View default page
+	return ('view', undef);
     }
     return;
 }
