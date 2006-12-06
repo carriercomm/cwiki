@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: Cwiki.pm,v 1.1 2006/03/21 14:04:12 pythontech Exp $
+#	$Id: Cwiki.pm,v 1.2 2006/12/06 09:15:13 pythontech Exp $
 #	Cwiki
 #	Things which can be configured:
 #	 * location of topic database
@@ -25,6 +25,77 @@
 #	  $::query	Current CGI query
 #	  $::method	Action of query
 #	  $::user	Validated user name
+#-----------------------------------------------------------------------
+#	Data structures:
+#	  topicdata
+#	    text => "marked up wiki content"
+#	    logname => "user"		Who made last edit
+#	    data => 1144396545		Date of last edit (unix time)
+#=======================================================================
+#	Abstract interfaces:
+#-----------------------------------------------------------------------
+#	archive:
+#	    index() -> @topics
+#		Return list of topic names
+#	    topicExists($topic) -> 1|undef
+#		Check if topic exists
+#	    getTopic($topic) -> $data
+#		Get current topic
+#	    updateTopic($topic, $data)
+#		Commit a change
+#	    renameTopic($topic, $newname)
+#		Rename a topic
+#	    hasLink($topic, $dest) => 1|undef
+#		Check if there is a link from one topic to another,
+#		even if second does not exist yet
+#	    backlinks($topic) -> {referrer => 1, ...}
+#		Get hash with keys being topic referring to given
+#-----------------------------------------------------------------------
+#	log:
+#	    record($topic, $time, $user)
+#		Record a change to a topic
+#-----------------------------------------------------------------------
+#	formatter:
+#	    linkPattern() -> $regexp
+#		Pattern for link within text
+#	    topicLink($topic, @rest)
+#		URL for a topic (to edit if does not exist)
+#	    topicHtml($link, @rest)
+#		HTML of a topic with hyperlink
+#	    toHtml($text) -> $html
+#		Convert wiki markup to HTML
+#	    toLaTeX($text)
+#		Convert wiki markup to LaTeX
+#	    links($data) -> {Dest1 => 1, Dest2 => 1, ...}
+#		Find links from text to other topics
+#	    addChange($data, $topic, $user)
+#		Assuming $data is a log topic, add an update
+#-----------------------------------------------------------------------
+#	ui:
+#	    view($topichtml) -> $pagehtml
+#		Return HTML page, given topic content as HTML
+#	    edit($text) -> $pagehtml
+#		Return HTML page for editing $::topic
+#	    editappend($text) -> $pagehtml
+#		Return HTML page for appending to $::topic
+#	    askrename() -> $pagehtml
+#		Return HTML page for page-renaming form
+#	    links(@topics) -> $pagehtml
+#		Return HTML page showing backlinks for $::topic
+#	    search($search,@topics) -> $pagehtml
+#		Return HTML page showing search results
+#	    error($errtext) -> $pagehtml
+#		Return HTML page showing user error
+#-----------------------------------------------------------------------
+#	server:
+#	    url($method [,Topic => $topic]) -> $url
+#		Return URL for method on $topic (or $::topic)
+#	    link($method [,Topic => $topic][,Html => $h]) -> $html
+#		Return HTML link for method on topic
+#	    fields($method [,Topic => $topic]) -> $html
+#		Return hidden input fields for form
+#	    action_topic($query) => ($method, $topic)
+#		Examine query to get method and topic
 #=======================================================================
 package Cwiki;
 use strict;
@@ -43,6 +114,7 @@ use strict;
 #	  server		URLs for views / actions
 #	  ui			How pages displayed to user
 #	  defaultTopic		Start page for default URL
+#	  debugFile		(optional) filename for debug log
 #-----------------------------------------------------------------------
 sub new {
     my $class = shift;
@@ -74,8 +146,9 @@ sub webquery {
     my $session = $query->session;
     my $linkPattern = $::wiki->fmt->linkPattern;
 
-    if ($ENV{'REQUEST_METHOD'} eq 'POST') {
-	if (open(DBG,">> /home/pythontech/cwiki.dbg")) {
+    if ($ENV{'REQUEST_METHOD'} eq 'POST' &&
+	defined($self->{'debugFile'})) {
+	if (open(DBG,'>>',$self->{'debugFile'})) {
 	    print DBG "\n-----------------------------\n",
 	    map {"$_=$ENV{$_}\n"} sort keys %ENV;
 	    close(DBG);
@@ -206,6 +279,12 @@ sub webquery {
     } elsif ($::method eq 'links') {
 	my $links = $::wiki->archive->backlinks($::topic);
 	$response->write($::wiki->ui->links(keys %$links));
+
+    } elsif ($::method eq 'latex') {
+	my $data = $::wiki->archive->getTopic($::topic);
+	my $latex = $::wiki->fmt->toLaTeX($data->{'text'});
+	$response->set_type('application/x-tex');
+	$response->write($latex);
 
     } else {
 	die "Method $::method unimplemented\n";
