@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: FormatAtisPlus.pm,v 1.3 2006/12/06 11:12:22 pythontech Exp $
+#	$Id: FormatAtisPlus.pm,v 1.4 2006/12/07 10:06:41 pythontech Exp $
 #	Wiki formatting module
 #	Copyright (C) 2000-2005  Python Technology Limited
 #
@@ -132,9 +132,11 @@ sub toHtml {
 	    $para = 1;
 	    next;
 	} elsif (/^(\t+)([^\t:]+):\t+([^\t]+)$/) {
+	    # E.g. "<tab>term:<tab>description"
 	    $ret .= &_htmlLevel(\@stack, \$para, "dl", length $1);
 	    $ret .= "<dt>" . $self->_wikify($2) . "\n<dd>" . $self->_wikify($3);
 	} elsif (/^(\t+)([^\t]+?\t.*)/) {
+	    # E.g. "<tab>col1<tab>col2..."
 	    $ret .= &_htmlLevel(\@stack, \$para, "table", length $1);
 	    $ret .= "<tr>";
 	    foreach (split(/\t+/,$2)) {
@@ -142,6 +144,7 @@ sub toHtml {
 	    }
 	    $ret .= "</tr>";
 	} elsif (my($cells) = /^\s+\|(.*)\|\s*$/) {
+	    # E.g. " | col1 | col2... |"
 	    $ret .= &_htmlLevel(\@stack, \$para, "table", 1);
 	    $ret .= "<tr>";
 	    foreach (split(/\|/,$cells)) {
@@ -149,14 +152,25 @@ sub toHtml {
 	    }
 	    $ret .= "</tr>";
 	} elsif (/^(\t+)\*/) {
+	    # E.g. "<tab>1. Top level item"
+	    #      "<tab><tab>1. Next level item
 	    $ret .= &_htmlLevel(\@stack, \$para, "ul", length $1);
-	    $ret .= "<li>" . $self->_wikify($');
-	} elsif (/^(\*+)/) {
-	    $ret .= &_htmlLevel(\@stack, \$para, "ul", length $1);
-	    $ret .= "<li>" . $self->_wikify($');
+	    $ret .= "<li>" . $self->_wikify($') . "</li>";
 	} elsif (/^(\t+)\d+\.?/) {
+	    # E.g. "<tab>1. Top level item"
+	    #      "<tab><tab>1. Next level item
 	    $ret .= &_htmlLevel(\@stack, \$para, "ol", length $1);
-	    $ret .= "<li>" . $self->_wikify($');
+	    $ret .= "<li>" . $self->_wikify($') . "</li>";
+	} elsif (/^(\*+)\d+\.?/) {
+	    # E.g. "*1. Top level item"
+	    #      "**1. Next level item"
+	    $ret .= &_htmlLevel(\@stack, \$para, "ol", length $1);
+	    $ret .= "<li>" . $self->_wikify($') . "</li>";
+	} elsif (/^(\*+)/) {
+	    # E.g. "* Top level item"
+	    #      "** Next level item"
+	    $ret .= &_htmlLevel(\@stack, \$para, "ul", length $1);
+	    $ret .= "<li>" . $self->_wikify($') . "</li>";
 	} elsif (/^\s/) {
 	    $ret .= &_htmlLevel(\@stack, \$para, "pre", 1);
 	    $ret .= $self->_wikify($');
