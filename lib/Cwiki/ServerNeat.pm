@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: ServerNeat.pm,v 1.2 2006/12/06 09:15:55 pythontech Exp $
+#	$Id: ServerNeat.pm,v 1.3 2006/12/07 10:08:45 pythontech Exp $
 #	Server configuration - neat
 #	Copyright (C) 2006  Python Technology Limited
 #
@@ -21,8 +21,8 @@
 #	my $srv = Cwiki::ServerNeat(BaseUrl => '/wiki');
 #	Neat URL scheme:
 #	  view:		/wiki/StartHere
-#	  edit:		/wiki/@edit/StartHere
-#	  save:		/wiki/@save/StartHere
+#	  edit:		/wiki/=edit/StartHere
+#	  save:		/wiki/=save/StartHere
 #
 #	$u = $srv->url('view', Topic => "MyIndex");
 #	$h = $srv->fields('save', Topic => "MyIndex");
@@ -47,7 +47,7 @@ sub url {
     my $topic = $override{'Topic'} || $::topic;
     my $url = $self->{'BaseUrl'};
     unless ($method eq 'view') {
-	$url .= '/@' . $method;
+	$url .= '/=' . $method;
     }
     unless ($method eq 'search') {
 	my $topic = $override{'Topic'} || $::topic;
@@ -74,11 +74,11 @@ sub fields {
 sub action_topic {
     my($self, $query) = @_;
     my $path = $query->path_info;
-    if (my($method,$topic) = $path =~ m!^/@([a-z]+)/([^/]+)$!) {
+    if (my($method,$topic) = $path =~ m!^/=([a-z]+)/([^/]+)$!) {
 	return ($method, ux($topic));
-    } elsif ($path eq '/@search') {
+    } elsif ($path eq '/=search') {
 	return ('search', undef);
-    } elsif (my($topic) = $path =~ m!^/([^@/][^/]*)$!) {
+    } elsif (my($topic) = $path =~ m!^/([^=/][^/]*)$!) {
 	return ('view', ux($topic));
     } elsif ($path eq '') {
 	# View default page
