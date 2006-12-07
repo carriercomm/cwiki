@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: Cwiki.pm,v 1.2 2006/12/06 09:15:13 pythontech Exp $
+#	$Id: Cwiki.pm,v 1.3 2006/12/07 10:11:32 pythontech Exp $
 #	Cwiki
 #	Things which can be configured:
 #	 * location of topic database
@@ -96,6 +96,9 @@
 #		Return hidden input fields for form
 #	    action_topic($query) => ($method, $topic)
 #		Examine query to get method and topic
+#-----------------------------------------------------------------------
+#	notifier:
+#	    notify($users, $event, $info);
 #=======================================================================
 package Cwiki;
 use strict;
@@ -113,6 +116,7 @@ use strict;
 #	  formatter		Convert wikitext to HTML
 #	  server		URLs for views / actions
 #	  ui			How pages displayed to user
+#	  notifier		(optional) tell users about change
 #	  defaultTopic		Start page for default URL
 #	  debugFile		(optional) filename for debug log
 #-----------------------------------------------------------------------
@@ -133,6 +137,7 @@ sub log {shift->{'log'}}
 sub server {shift->{'server'}}
 sub fmt {shift->{'formatter'}}
 sub ui {shift->{'ui'}}
+sub notifier {shift->{'notifier'}}
 sub defaultTopic {shift->{'defaultTopic'}}
 
 #-----------------------------------------------------------------------
@@ -211,6 +216,31 @@ sub webquery {
 	}
 	$response->write($page);
 
+    } elsif ($::method eq 'save') {
+	$::user = $query->require_login
+	    or return;
+	my $data = $::wiki->archive->getTopic($::topic)
+	    || {};		# Perhaps a new topic
+	$data->{'text'} = $query->param('text');
+	$data->{'date'} = time;
+	$data->{'logname'} = $::user;
+#    print STDERR "text = ",$data->{'text'},"\n";
+	$::wiki->archive->updateTopic($::topic, $data);
+	$::wiki->log->record($::topic, time, $::user);
+	my $url = $::wiki->server->url('view');
+	if ($::wiki->notifier) {
+	    $::wiki->notifier->notify($data->{'watchers'},
+				      'edit',
+				      {user => $::user,
+				       topic => $::topic,
+				       url => $url});
+	}
+	$response->redirect($url);
+
+	#--- Remaining topics require the topic to exist
+    } elsif (! $::wiki->archive->topicExists($::topic)) {
+	$response->write($::wiki->ui->error("No such topic $::topic"));
+
     } elsif ($::method eq 'editappend') {
 	$::user = $query->require_login
 	    or return;
@@ -218,19 +248,6 @@ sub webquery {
 	my $topicHtml = $::wiki->fmt->toHtml($data->{'text'});
 	$page = $::wiki->ui->editappend($topicHtml);
 	$response->write($page);
-
-    } elsif ($::method eq 'save') {
-	$::user = $query->require_login
-	    or return;
-	my $data = {
-	    'text' => $query->param('text'),
-	    'date' => time,
-	    'logname' => $::user,
-	};
-#    print STDERR "text = ",$data->{'text'},"\n";
-	$::wiki->archive->updateTopic($::topic, $data);
-	$::wiki->log->record($::topic, time, $::user);
-	$response->redirect($::wiki->server->url('view'));
 
     } elsif ($::method eq 'append') {
 	$::user = $query->require_login
@@ -247,11 +264,15 @@ sub webquery {
 #    print STDERR "text = ",$data->{'text'},"\n";
 	$::wiki->archive->updateTopic($::topic, $data);
 	$::wiki->log->record($::topic, time, $::user);
-	$response->redirect($::wiki->server->url('view'));
-
-	#--- Remaining topics require the topic to exist
-    } elsif (! $::wiki->archive->topicExists($::topic)) {
-	$response->write($::wiki->ui->error("No such topic $::topic"));
+	my $url = $::wiki->server->url('view');
+	if ($::wiki->notifier) {
+	    $::wiki->notifier->notify($data->{'watchers'},
+				      'append',
+				      {user => $::user,
+				       topic => $::topic,
+				       url => $url});
+	}
+	$response->redirect($url);
 
     } elsif ($::method eq 'view') {
 	my $data = $::wiki->archive->getTopic($::topic);
@@ -271,9 +292,19 @@ sub webquery {
 	} elsif ($::wiki->archive->topicExists($newname)) {
 	    $response->write($::wiki->ui->error("Topic $newname already exists"));
 	} else {
+	    my $data = $::wiki->archive->getTopic($::topic);
 	    $::wiki->archive->renameTopic($::topic, $newname);
 	    $::wiki->log->record($newname, time, $::user, "Rename from $::topic");
-	    $response->redirect($::wiki->server->url('view', Topic => $newname));
+	    if ($::wiki->notifier) {
+		my $newurl = $::wiki->server->url('view', Topic => $newname);
+		$::wiki->notifier->notify($data->{'watchers'},
+					  'rename',
+					  {user => $::user,
+					   topic => $::topic,
+					   newname => $newname,
+					   url => $newurl});
+	    }
+	    $response->redirect($::wiki->server->url('view'));
 	}
 
     } elsif ($::method eq 'links') {
@@ -285,6 +316,33 @@ sub webquery {
 	my $latex = $::wiki->fmt->toLaTeX($data->{'text'});
 	$response->set_type('application/x-tex');
 	$response->write($latex);
+
+    } elsif ($::method eq 'watch') {
+	$::user = $query->require_login
+	    or return;
+	my $data = $::wiki->archive->getTopic($::topic);
+	if (grep {$_ eq $::user} @{$data->{'watchers'}}) {
+	    $response->write($::wiki->ui->error("You are already watching topic $::topic"));
+	} else {
+	    push @{$data->{'watchers'}}, $::user;
+	    $::wiki->archive->updateTopic($::topic, $data);
+	    $::wiki->log->record($::topic, time, $::user, "Add watcher");
+	    $response->redirect($::wiki->server->url('view'));
+	}
+
+    } elsif ($::method eq 'unwatch') {
+	$::user = $query->require_login
+	    or return;
+	my $data = $::wiki->archive->getTopic($::topic);
+	if (! grep {$_ eq $::user} @{$data->{'watchers'}}) {
+	    $response->write($::wiki->ui->error("You were not watching topic $::topic"));
+	} else {
+	    my @watchers = grep {$_ ne $::user} @{$data->{'watchers'}};
+	    $data->{'watchers'} = \@watchers;
+	    $::wiki->archive->updateTopic($::topic, $data);
+	    $::wiki->log->record($::topic, time, $::user, "Remove watcher");
+	    $response->redirect($::wiki->server->url('view'));
+	}
 
     } else {
 	die "Method $::method unimplemented\n";
