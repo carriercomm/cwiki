@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: UiPtTemplates.pm,v 1.2 2006/12/06 09:17:29 pythontech Exp $
+#	$Id: UiPtTemplates.pm,v 1.3 2006/12/07 10:09:37 pythontech Exp $
 #	Presentation - templates
 #	Copyright (C) 2005  Python Technology Limited
 #
@@ -97,7 +97,7 @@ sub error {
 #-----------------------------------------------------------------------
 sub _common {
     my($self, $tmpl, @vars) = @_;
-    my($moddate,$moduser);
+    my($moddate,$moduser,$watchers,$watching);
     if (my $data = $::wiki->archive->getTopic($::topic)) {
 	my($se,$mi,$hr,$dy,$mo,$yr) = localtime($data->{'date'});
 	$moddate = sprintf("%d %s %d %02d:%02d",
@@ -109,6 +109,8 @@ sub _common {
 			   1900+$yr,
 			   $hr,$mi);
 	$moduser = $data->{'logname'};
+	$watchers = $data->{'watchers'};
+	$watching = grep {$_ eq $::user} @$watchers;
     }
     my $env = {
 	'HTML:topic' => $::wiki->fmt->topicHtml($::topic),
@@ -132,6 +134,10 @@ sub _common {
 	searchurl => $::wiki->server->url('search'),
 	'HTML:searchfields' => $::wiki->server->fields('search'),
 	latexurl => $::wiki->server->url('latex'),
+	watchurl => $::wiki->server->url('watch'),
+	unwatchurl => $::wiki->server->url('unwatch'),
+	watchers => $watchers,
+	watching => $watching,
     };
     (my $tmpl = $self->{'filespec'}) =~ s!%s!$tmpl!e;
     my $html = $self->{'templater'}->process_file($tmpl,
