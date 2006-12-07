@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: PageArchive.pm,v 1.2 2006/03/21 14:07:55 pythontech Exp $
+#	$Id: PageArchive.pm,v 1.3 2006/12/07 10:07:54 pythontech Exp $
 #	Simple Page Archive
 #	Copyright (C) 2000-2005  Python Technology Limited
 #
@@ -73,6 +73,8 @@ sub getTopic {
 	print STDERR "db undef from $filename\n" unless defined $db;
 	my @data = (split(FIELDSEP, $db));
 	my(%data) = @data;
+	$data{'watchers'} = [split /,/, $data{'watchers'}]
+	    if defined $data{'watchers'};
 	$data{'text'} = "" unless defined $data{'text'};
 	return \%data;
     }
@@ -81,7 +83,10 @@ sub getTopic {
 
 sub updateTopic {
     my($self, $name, $data) = @_;
-    my $text = join(FIELDSEP, %$data);
+    my %data = %$data;
+    $data{'watchers'} = join(',',@{$data{'watchers'}})
+	if $data{'watchers'};
+    my $text = join(FIELDSEP, %data);
     my $filename = &::tokenSubst($self->{'pattern'}, Topic => $name);
 #    print STDERR " update $filename\n";
     local(*DB);
