@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: LogTopic.pm,v 1.2 2006/03/21 14:07:31 pythontech Exp $
+#	$Id: LogTopic.pm,v 1.3 2006/12/08 11:31:34 pythontech Exp $
 #	Wiki change log using a real topic
 #	Copyright (C) 2000-2006  Python Technology Limited
 #
@@ -34,9 +34,11 @@ sub new {
 
 #-----------------------------------------------------------------------
 #	Record a change
+#	Only record actual edits; ignore watch/unwatch events
 #-----------------------------------------------------------------------
 sub record {
-    my($self, $topic, $time, $user) = @_;
+    my($self, $topic,$time,$user,$event,@rest) = @_;
+    return unless ($event eq 'edit' || $event eq 'append');
     return if $topic eq $self->{'logtopic'};	# Avoid recursion
 
     my $data = $::wiki->archive->getTopic($self->{'logtopic'}) 
