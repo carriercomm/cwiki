@@ -1,7 +1,7 @@
 use ExtUtils::MakeMaker;
 WriteMakefile(
 	      NAME	=> 'Cwiki',
-	      VERSION => '1.3',
+	      VERSION => '1.4',
 	      ABSTRACT => 'Configurable wiki',
 	      AUTHOR => 'Colin Hogben <perl@pythontech.co.uk>',
 	      PREREQ_PM => {
