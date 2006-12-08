@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: NotifySendmail.pm,v 1.1 2006/12/07 10:13:23 pythontech Exp $
+#	$Id: NotifySendmail.pm,v 1.2 2006/12/08 11:32:16 pythontech Exp $
 #	Notify user of change - via sendmail
 #	Copyright (C) 2006  Python Technology Limited
 #
@@ -19,8 +19,9 @@
 #	02111-1307, USA.
 #-----------------------------------------------------------------------
 #	my $n = Cwiki::NotifySendmail(sendmail => '/usr/sbin/sendmail',
-#				      fromAddress => 'wiki@example.com')
-#	$n->notify($users, 'edit', $user, $topic)
+#				      fromAddress => 'wiki@example.com',
+#				      subjectPrefix => 'My Cat Wiki: ')
+#	$n->notify($users, 'edit', {user=>$user, topic=>$topic})
 #=======================================================================
 package Cwiki::NotifySendmail;
 use strict;
@@ -38,20 +39,21 @@ sub notify {
     my @recip = grep {$_ ne $info->{'user'}} @$users; # Don't tell self
     return unless @recip;	# Nobody to tell
 
-    my($subject,$body);
+    my $subject = $self->{'subjectPrefix'};
+    my $body;
     my $user = $info->{'user'};
     my $topic = $info->{'topic'};
     if ($event eq 'edit') {
-	$subject = "Topic $topic has been edited";
+	$subject .= "Topic $topic has been edited";
 	$body = "User $user has edited topic $topic\n";
     } elsif ($event eq 'append') {
-	$subject = "Topic $topic has been edited";
+	$subject .= "Topic $topic has been edited";
 	$body = "User $user has appended to topic $topic\n";
     } elsif ($event eq 'rename') {
-	$subject = "Topic $topic has been renamed to $info->{'newname'}";
+	$subject .= "Topic $topic has been renamed to $info->{'newname'}";
 	$body = "User $user has renamed topic $topic to $info->{'newname'}\n";
     } else {
-	$subject = "event=$event";
+	$subject .= "event=$event";
 	$body = "$subject\n" . map {"$_=$info->{$_}\n"} keys %$info;
     }
     my $url = $info->{'url'};
