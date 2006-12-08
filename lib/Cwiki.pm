@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: Cwiki.pm,v 1.3 2006/12/07 10:11:32 pythontech Exp $
+#	$Id: Cwiki.pm,v 1.4 2006/12/08 11:33:06 pythontech Exp $
 #	Cwiki
 #	Things which can be configured:
 #	 * location of topic database
@@ -226,7 +226,7 @@ sub webquery {
 	$data->{'logname'} = $::user;
 #    print STDERR "text = ",$data->{'text'},"\n";
 	$::wiki->archive->updateTopic($::topic, $data);
-	$::wiki->log->record($::topic, time, $::user);
+	$::wiki->log->record($::topic, time, $::user, 'edit');
 	my $url = $::wiki->server->url('view');
 	if ($::wiki->notifier) {
 	    $::wiki->notifier->notify($data->{'watchers'},
@@ -263,7 +263,7 @@ sub webquery {
 	};
 #    print STDERR "text = ",$data->{'text'},"\n";
 	$::wiki->archive->updateTopic($::topic, $data);
-	$::wiki->log->record($::topic, time, $::user);
+	$::wiki->log->record($::topic, time, $::user, 'append');
 	my $url = $::wiki->server->url('view');
 	if ($::wiki->notifier) {
 	    $::wiki->notifier->notify($data->{'watchers'},
@@ -294,7 +294,7 @@ sub webquery {
 	} else {
 	    my $data = $::wiki->archive->getTopic($::topic);
 	    $::wiki->archive->renameTopic($::topic, $newname);
-	    $::wiki->log->record($newname, time, $::user, "Rename from $::topic");
+	    $::wiki->log->record($newname, time, $::user, 'rename', $::topic);
 	    if ($::wiki->notifier) {
 		my $newurl = $::wiki->server->url('view', Topic => $newname);
 		$::wiki->notifier->notify($data->{'watchers'},
@@ -326,7 +326,7 @@ sub webquery {
 	} else {
 	    push @{$data->{'watchers'}}, $::user;
 	    $::wiki->archive->updateTopic($::topic, $data);
-	    $::wiki->log->record($::topic, time, $::user, "Add watcher");
+	    $::wiki->log->record($::topic, time, $::user, 'watch');
 	    $response->redirect($::wiki->server->url('view'));
 	}
 
@@ -340,7 +340,7 @@ sub webquery {
 	    my @watchers = grep {$_ ne $::user} @{$data->{'watchers'}};
 	    $data->{'watchers'} = \@watchers;
 	    $::wiki->archive->updateTopic($::topic, $data);
-	    $::wiki->log->record($::topic, time, $::user, "Remove watcher");
+	    $::wiki->log->record($::topic, time, $::user, 'unwatch');
 	    $response->redirect($::wiki->server->url('view'));
 	}
 
