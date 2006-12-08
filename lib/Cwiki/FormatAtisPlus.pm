@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: FormatAtisPlus.pm,v 1.4 2006/12/07 10:06:41 pythontech Exp $
+#	$Id: FormatAtisPlus.pm,v 1.5 2006/12/08 11:31:01 pythontech Exp $
 #	Wiki formatting module
 #	Copyright (C) 2000-2005  Python Technology Limited
 #
@@ -266,21 +266,40 @@ sub toLaTeX {
 	    $para = 1;
 	    next;
 	} elsif (/^(\t+)([^\t:]+):\t+([^\t]+)$/) {
+	    # E.g. "<tab>term:<tab>description"
 	    $ret .= &_latexLevel(\@stack, \$para, "description", length $1);
 	    $ret .= "\\item[" . $self->_wiki2latex($2) . "]\n" . $self->_wiki2latex($3);
 	} elsif (/^(\t+)([^\t]+?\t.*)/) {
+	    # E.g. "<tab>col1<tab>col2..."
 	    my @cols = split(/\t+/,$2);
 	    $ret .= &_latexLevel(\@stack, \$para, "tabular", length $1,
 				 '{'.('l'x@cols).'}');
 	    $ret .= join(" & ",map {$self->_wiki2latex($_)} @cols) . "\\\\";
+	} elsif (my($cells) = /^\s+\|(.*)\|\s*$/) {
+	    # E.g. " | col1 | col2... |"
+	    my @cols = split(/\|/,$cells);
+	    $ret .= &_latexLevel(\@stack, \$para, "tabular", 1,
+				 '{'.('l'x@cols).'}');
+	    $ret .= join(" & ",map {$self->_wiki2latex($_)} @cols) . "\\\\";
 	} elsif (/^(\t+)\*/) {
-	    $ret .= &_latexLevel(\@stack, \$para, "itemize", length $1);
-	    $ret .= "\\item " . $self->_wiki2latex($');
-	} elsif (/^(\*+)/) {
+	    # E.g. "<tab>1. Top level item"
+	    #      "<tab><tab>1. Next level item
 	    $ret .= &_latexLevel(\@stack, \$para, "itemize", length $1);
 	    $ret .= "\\item " . $self->_wiki2latex($');
 	} elsif (/^(\t+)\d+\.?/) {
+	    # E.g. "<tab>1. Top level item"
+	    #      "<tab><tab>1. Next level item
 	    $ret .= &_latexLevel(\@stack, \$para, "enumerate", length $1);
+	    $ret .= "\\item " . $self->_wiki2latex($');
+	} elsif (/^(\*+)\d+\.?/) {
+	    # E.g. "*1. Top level item"
+	    #      "**1. Next level item"
+	    $ret .= &_latexLevel(\@stack, \$para, "enumerate", length $1);
+	    $ret .= "\\item " . $self->_wiki2latex($');
+	} elsif (/^(\*+)/) {
+	    # E.g. "* Top level item"
+	    #      "** Next level item"
+	    $ret .= &_latexLevel(\@stack, \$para, "itemize", length $1);
 	    $ret .= "\\item " . $self->_wiki2latex($');
 	} elsif (/^\s/) {
 	    $ret .= &_latexLevel(\@stack, \$para, "verbatim", 1); # ???
