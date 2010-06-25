@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: FormatAtisPlus.pm,v 1.5 2006/12/08 11:31:01 pythontech Exp $
+#	$Id: FormatAtisPlus.pm,v 1.2 2010/06/25 15:12:55 wikiwiki Exp $
 #	Wiki formatting module
 #	Copyright (C) 2000-2005  Python Technology Limited
 #
@@ -53,8 +53,8 @@ sub linkPattern {
 }
 
 sub topicLink {
-    my($self, $topic,@rest) = @_;
-    my $name = $self->topicHtml($topic, @rest);
+    my($self, $topic) = @_;
+    my $name = $self->topicHtml($topic);
     if ($::wiki->archive->topicExists($topic)) {
 	return $::wiki->server->link('view', Topic => $topic, Html => $name);
     } else {
@@ -63,10 +63,16 @@ sub topicLink {
     }
 }
 
+sub topicClean {
+    my($self, $topic) = @_;
+    $topic =~ s/_/ /g;
+    $topic =~ s/^ //;  $topic =~ s/ $//;
+    return $topic;
+}
+
 sub topicHtml {
-    my($self, $link,@rest) = @_;
-    $link =~ s/_/ /g;
-    $link =~ s/^ //;  $link =~ s/ $//;
+    my($self, $link) = @_;
+    $link = $self->topicClean($link);
     return Cwiki::Html::quoteEnt($link);
 }
 
@@ -97,7 +103,7 @@ sub _htmlLevel {
 }
 
 #-----------------------------------------------------------------------
-#	Convert wiki markup to HTML.
+#	Generic traversal
 #	Global level must supply a regexp linkPattern which matches
 #	a wiki link.
 #
@@ -119,87 +125,143 @@ sub _htmlLevel {
 #	 * horizontal rule:	----
 #	 * URLs:		http://example.com, mailto:x@y.z etc.
 #-----------------------------------------------------------------------
-sub toHtml {
-    my($self, $text) = @_;
+sub parsePage {
+    my($self, $text, $cb) = @_;
     local $_;
-    my $ret = "";
-    my @stack = ("");		# Stack of HTML elements
+    my @stack = ('');
     my $para = 0;		# Paragraph break pending?
 
     foreach (split(/\r?\n/, $text)) {
 	if (/^\s*$/) {		# Blank line
-	    $ret .= "\n" if $stack[-1] eq "pre" && $para;
-	    $para = 1;
+	    if ($stack[-1] eq 'pre') {
+		# May be end of pre; we don't knoe yet
+		$para = 1;
+	    } else {
+		$self->parseLevel($cb, \@stack, \$para, "", 0);
+	    }
+	    #$cb->('br') if $stack[-1] eq 'pre' && $para;
+	    #$para = 1;
 	    next;
 	} elsif (/^(\t+)([^\t:]+):\t+([^\t]+)$/) {
 	    # E.g. "<tab>term:<tab>description"
-	    $ret .= &_htmlLevel(\@stack, \$para, "dl", length $1);
-	    $ret .= "<dt>" . $self->_wikify($2) . "\n<dd>" . $self->_wikify($3);
+	    $self->parseLevel($cb, \@stack, \$para, 'dl', length $1);
+	    $cb->('dt');
+	    $self->parseText($cb, $2);
+	    $cb->('/dt');
+	    $cb->('dd');
+	    $self->parseText($cb, $3);
+	    $cb->('/dd');
 	} elsif (/^(\t+)([^\t]+?\t.*)/) {
 	    # E.g. "<tab>col1<tab>col2..."
-	    $ret .= &_htmlLevel(\@stack, \$para, "table", length $1);
-	    $ret .= "<tr>";
-	    foreach (split(/\t+/,$2)) {
-		$ret .= "<td>" . $self->_wikify($_) . "</td>";
+	    my @cols = split(/\t+/,$2);
+	    $self->parseLevel($cb, \@stack, \$para, 'table', 1, scalar @cols);
+	    $cb->('tr');
+	    foreach my $col (@cols) {
+		$cb->('td');
+		$self->parseText($cb, $col);
+		$cb->('/td');
 	    }
-	    $ret .= "</tr>";
+	    $cb->('/tr');
 	} elsif (my($cells) = /^\s+\|(.*)\|\s*$/) {
 	    # E.g. " | col1 | col2... |"
-	    $ret .= &_htmlLevel(\@stack, \$para, "table", 1);
-	    $ret .= "<tr>";
-	    foreach (split(/\|/,$cells)) {
-		$ret .= "<td>" . $self->_wikify($_) . "</td>";
+	    my @cols = split(/\|/,$cells);
+	    $self->parseLevel($cb, \@stack, \$para, 'table', 1, scalar @cols);
+	    $cb->('tr');
+	    foreach my $col (@cols) {
+		$cb->('td');
+		$self->parseText($cb, $col);
+		$cb->('/td');
 	    }
-	    $ret .= "</tr>";
+	    $cb->('/tr');
 	} elsif (/^(\t+)\*/) {
 	    # E.g. "<tab>1. Top level item"
 	    #      "<tab><tab>1. Next level item
-	    $ret .= &_htmlLevel(\@stack, \$para, "ul", length $1);
-	    $ret .= "<li>" . $self->_wikify($') . "</li>";
+	    $self->parseLevel($cb, \@stack, \$para, 'ul', length $1);
+	    $cb->('li');
+	    $self->parseText($cb, $');
+	    $cb->('/li');
 	} elsif (/^(\t+)\d+\.?/) {
 	    # E.g. "<tab>1. Top level item"
 	    #      "<tab><tab>1. Next level item
-	    $ret .= &_htmlLevel(\@stack, \$para, "ol", length $1);
-	    $ret .= "<li>" . $self->_wikify($') . "</li>";
+	    $self->parseLevel($cb, \@stack, \$para, 'ol', length $1);
+	    $cb->('li');
+	    $self->parseText($cb, $');
+	    $cb->('/li');
 	} elsif (/^(\*+)\d+\.?/) {
 	    # E.g. "*1. Top level item"
 	    #      "**1. Next level item"
-	    $ret .= &_htmlLevel(\@stack, \$para, "ol", length $1);
-	    $ret .= "<li>" . $self->_wikify($') . "</li>";
+	    $self->parseLevel($cb, \@stack, \$para, 'ol', length $1);
+	    $cb->('li');
+	    $self->parseText($cb, $');
+	    $cb->('/li');
 	} elsif (/^(\*+)/) {
 	    # E.g. "* Top level item"
 	    #      "** Next level item"
-	    $ret .= &_htmlLevel(\@stack, \$para, "ul", length $1);
-	    $ret .= "<li>" . $self->_wikify($') . "</li>";
+	    $self->parseLevel($cb, \@stack, \$para, 'ul', length $1);
+	    $cb->('li');
+	    $self->parseText($cb, $');
+	    $cb->('/li');
 	} elsif (/^\s/) {
-	    $ret .= &_htmlLevel(\@stack, \$para, "pre", 1);
-	    $ret .= $self->_wikify($');
+	    if ($stack[-1] eq 'pre' && $para) {
+		$cb->('prel');
+		$cb->('/prel');
+		$para = undef;
+	    }
+	    $self->parseLevel($cb, \@stack, \$para, 'pre', 1);
+	    $cb->('prel');
+	    $self->parseText($cb, $');
+	    $cb->('/prel');
+	    $para = undef;
 	} elsif (/^\|/) {
-	    $ret .= &_htmlLevel(\@stack, \$para, "pre", 1);
-	    $ret .= &Cwiki::Html::quoteEnt($');
+	    if ($stack[-1] eq 'pre' && $para) {
+		$cb->('prel');
+		$cb->('/prel');
+	    }
+	    $self->parseLevel($cb, \@stack, \$para, 'pre', 1);
+	    $cb->('prel');
+	    $cb->('CDATA', $');
+	    $cb->('/prel');
+	    $para = undef;
 	} else {
-	    $ret .= &_htmlLevel(\@stack, \$para, "", 0);
-	    $ret .= $self->_wikify($_);
+	    $self->parseLevel($cb, \@stack, \$para, 'p', 1);
+	    $self->parseText($cb, $_);
+	    $cb->('CDATA', "\n");
 	}
-	$ret .= "\n";
     }
-    $ret .= &_htmlLevel(\@stack, \$para, "", 0);
-    return $ret;
+    $self->parseLevel($cb, \@stack, \$para, "", 0);
 }
 
 #-----------------------------------------------------------------------
-#	Scan a line of running text, converting special entities from
-#	wiki markup to HTML
+#	Handle a change in nesting level
+#-----------------------------------------------------------------------
+sub parseLevel {
+    my($self, $cb,$stack,$ppara, $code, $depth, $extra) = @_;
+    # Have descended out of a level
+    while (@$stack > $depth+1 ||
+	   (@$stack == $depth+1 && $stack->[-1] ne $code)) {
+	my $tag = pop @$stack;
+	$cb->("/$tag");
+    }
+
+    # Going in - push on stack and emit tags
+    while (@$stack < $depth+1) {
+	push (@$stack, ($code));
+	$cb->($code, $extra);
+    }
+}
+
+#-----------------------------------------------------------------------
+#	Parse test within a line, looking for markup:
 #	 * Wiki links, e.g. CodasWiki or _other_topic_
 #	 * ''italicised'' and '''emboldened'''
 #	 * horizontal rules ----
 #	 * embedded URLs e.g. http://w3.jet.uk or mailto:chah@jet.uk 
 #-----------------------------------------------------------------------
-sub _wikify {
-    my($self, $text) = @_;
+sub parseText {
+    my($self, $cb, $text) = @_;
     my $pat = $self->{'linkPattern'};
-    my $ret;
     my $loop = 0;
+
     while (my($url1,$url2,
 	      $b,
 	      $i,
@@ -207,188 +269,301 @@ sub _wikify {
 	      $hr,
 	      $dollar,$link,@linkdata) =
 	   ($text =~ 
-	    /\b(https?|ftp|news|file|mailto):([^\s\)\],]+)|
+	    /\b(https?|ftp|news|file|mailto|point|product|form78|openwiki):([^\s\)\],]+)|
 	    '''((?:''.*?''|.)*?)'''|
 	    ''(.*?)''|
 	    \^\^([^\^]+)\^\^|
 	    (-{4,})|
 	    (\$?)($pat)/x)) {
-	die "Cwiki::FormatAtisPlus::_wikify looping" if ++$loop == 100;
+	die "Cwiki::FormatAtisPlus::parseText looping" if ++$loop == 100;
 #	print "match: $&\n";
-	$ret .= &Cwiki::Html::quoteEnt($`);
+	$cb->('CDATA', $`);
 	$text = $';
 	if ($url1) {
 	    if ($url1 eq 'http' && $url2 =~ /\.(gif|jpg|png)$/) {
-		$ret .= "<img src=\"$url1:$url2\" alt=\"\" />";
+		$cb->('img', "$url1:$url2");
 	    } else {
-		my $scheme = "$url1:";
-		$url2 =~ s|^//localhost/|/| if $url1 eq 'file';
-		# Suppress URL scheme if implicitly clear to reader
-		$scheme = "" if $scheme =~ /news|file|mailto/;
-		$url2 = Cwiki::Html::quoteEnt($url2);
-		$ret .= "<a href=\"$url1:$url2\">$scheme$url2</a>";
+		$cb->('link', "$url1:$url2");
 	    }
 	} elsif ($b) {
-	    $ret .= "<strong>" . $self->_wikify($b) . "</strong>";
+	    $cb->('strong');
+	    $self->parseText($cb, $b);
+	    $cb->('/strong');
 	} elsif ($i) {
-	    $ret .= "<em>" . $self->_wikify($i) . "</em>";
+	    $cb->('em');
+	    $self->parseText($cb, $i);
+	    $cb->('/em');
 	} elsif ($c) {
-	    $ret .= "<code>" . $self->_wikify($c) . "</code>";
+	    $cb->('code');
+	    $self->parseText($cb, $c);
+	    $cb->('/code');
 	} elsif ($hr) {
-	    $ret .= "<hr />";
+	    $cb->('hr');
 	} elsif ($link) {
 	    if ($dollar) {
-		# '$' prefix means don't treat as wiki topic
-		$ret .= &Cwiki::Html::quoteEnt($link);
+		$cb->('CDATA', $link);
 	    } else {
-		$ret .= $self->topicLink($link,@linkdata);
+		$cb->('wikilink',$link);
 	    }
 	}
     }
-    $ret .= &Cwiki::Html::quoteEnt($text);
-    return $ret;
+    $cb->('CDATA', $text);
 }
 
 #-----------------------------------------------------------------------
-#	Convert wiki to LaTeX
+#	Convert page to HTML
 #-----------------------------------------------------------------------
+sub toHtml {
+    my($self, $text) = @_;
+    eval "require Cwiki::Html"; die $@ if $@;
+    my @html;
+    $self->parsePage($text, sub {
+	my($ev,$info) = @_;
+	if ($ev eq 'CDATA') {
+	    push @html, &Cwiki::Html::quoteEnt($info);
+	} elsif ($ev eq 'link') {
+	    my($scheme,$rest) = $info =~ m!^(\w+):(.*)!;
+	    my $url = $info;
+	    if ($scheme =~ m!^(product|point|form78)$!) {
+		$url = "http://meta.jet.efda.org/$scheme/$rest"; # FIXME uq
+	    } elsif ($scheme eq 'openwiki') {
+		($info = $rest) =~ tr!_! !;
+		$url = "http://users.jet.efda.org/openwiki/index.php/$rest";
+	    } elsif ($scheme =~ m!^(mailto|news)$!) {
+		$info = $rest;
+	    }
+	    push @html, ('<a class="external" href="', 
+			 &Cwiki::Html::quoteEnt($url),
+			 '">',
+			 &Cwiki::Html::quoteEnt($info),
+			 '</a>');
+	} elsif ($ev eq 'wikilink') {
+	    push @html, $self->topicLink($info);
+	} elsif ($ev eq 'hr') {
+	    push @html, "<hr />\n";
+
+	} elsif ($ev eq 'pre') {
+	    push @html, "<pre>\n";
+	} elsif ($ev eq 'prel') {
+	} elsif ($ev eq '/prel') {
+	    push @html, "\n";
+
+	} else {
+	    push @html, "<$ev>";
+	    push @html, "\n"
+		if $ev =~ m!^/(p|ul|ol|li|dl|dd|table|tr|pre)$!;
+	}
+    });
+    return join('', @html);
+}
+
+#-----------------------------------------------------------------------
+#	Convert page to LaTeX
+#-----------------------------------------------------------------------
+my $latexMap = {
+    'dl' => "\\begin{description}",
+    '/dl' => "\\end{description}",
+    'dt' => "\\item[",
+    '/dt' => "]",
+    'dd' => " ",
+    '/dd' => "\n",
+    'ul' => "\\begin{itemize}\n",
+    '/ul' => "\\end{itemize}\n",
+    'ol' => "\\begin{enumerate}\n",
+    '/ol' => "\\end{enumerate}\n",
+    'li' => "\\item ",
+    '/li' => "\n",
+    '/table' => "\\end{tabular}\n",
+    '/td' => '',
+    '/tr' => " \\\\\n",
+    'p' => "\\par\n",
+    '/p' => "\n\n",
+    'strong' => "\\textbf{",
+    '/strong' => "}",
+    'em' => "\\emph{",
+    '/em' => "}",
+    'code' => "\\texttt{",
+    '/code' => "}",
+    'hr' => "\\begin{center}\\rule{2in}{1pt}\\end{center}\n",
+    'pre' => "\\begin{verbatim}\n",
+    '/pre' => "\\end{verbatim}\n",
+    'prel' => "",
+    '/prel' => "\n",
+};
+
 sub toLaTeX {
     my($self, $text) = @_;
-    require Cwiki::LaTeX;
-    local $_;
-    my $ret = "";
-    my @stack = ("");		# Stack of LaTeX elements
-    my $para = 0;		# Paragraph break pending?
+    eval "require Cwiki::LaTeX"; die $@ if $@;
+    my @tex;
+    my $inpre;
+    my $anytd;
+    $self->parsePage($text, sub {
+	my($ev,$info) = @_;
+	if ($ev eq 'CDATA') {
+	    push @tex, &Cwiki::LaTeX::quoteEnt($info);
 
-    foreach (split(/\r?\n/, $text)) {
-	if (/^\s*$/) {		# Blank line
-	    $ret .= "\n" if $stack[-1] eq "verbatim" && $para;
-	    $para = 1;
-	    next;
-	} elsif (/^(\t+)([^\t:]+):\t+([^\t]+)$/) {
-	    # E.g. "<tab>term:<tab>description"
-	    $ret .= &_latexLevel(\@stack, \$para, "description", length $1);
-	    $ret .= "\\item[" . $self->_wiki2latex($2) . "]\n" . $self->_wiki2latex($3);
-	} elsif (/^(\t+)([^\t]+?\t.*)/) {
-	    # E.g. "<tab>col1<tab>col2..."
-	    my @cols = split(/\t+/,$2);
-	    $ret .= &_latexLevel(\@stack, \$para, "tabular", length $1,
-				 '{'.('l'x@cols).'}');
-	    $ret .= join(" & ",map {$self->_wiki2latex($_)} @cols) . "\\\\";
-	} elsif (my($cells) = /^\s+\|(.*)\|\s*$/) {
-	    # E.g. " | col1 | col2... |"
-	    my @cols = split(/\|/,$cells);
-	    $ret .= &_latexLevel(\@stack, \$para, "tabular", 1,
-				 '{'.('l'x@cols).'}');
-	    $ret .= join(" & ",map {$self->_wiki2latex($_)} @cols) . "\\\\";
-	} elsif (/^(\t+)\*/) {
-	    # E.g. "<tab>1. Top level item"
-	    #      "<tab><tab>1. Next level item
-	    $ret .= &_latexLevel(\@stack, \$para, "itemize", length $1);
-	    $ret .= "\\item " . $self->_wiki2latex($');
-	} elsif (/^(\t+)\d+\.?/) {
-	    # E.g. "<tab>1. Top level item"
-	    #      "<tab><tab>1. Next level item
-	    $ret .= &_latexLevel(\@stack, \$para, "enumerate", length $1);
-	    $ret .= "\\item " . $self->_wiki2latex($');
-	} elsif (/^(\*+)\d+\.?/) {
-	    # E.g. "*1. Top level item"
-	    #      "**1. Next level item"
-	    $ret .= &_latexLevel(\@stack, \$para, "enumerate", length $1);
-	    $ret .= "\\item " . $self->_wiki2latex($');
-	} elsif (/^(\*+)/) {
-	    # E.g. "* Top level item"
-	    #      "** Next level item"
-	    $ret .= &_latexLevel(\@stack, \$para, "itemize", length $1);
-	    $ret .= "\\item " . $self->_wiki2latex($');
-	} elsif (/^\s/) {
-	    $ret .= &_latexLevel(\@stack, \$para, "verbatim", 1); # ???
-	    $ret .= $self->_wiki2latex($');
-	} elsif (/^\|/) {
-	    $ret .= &_latexLevel(\@stack, \$para, "verbatim", 1);
-	    $ret .= &Cwiki::LaTeX::quoteEnt($');
+	} elsif (defined(my $repl = $latexMap->{$ev})) {
+	    # Straight conversion
+	    push @tex, $repl;
+	} elsif ($ev eq 'pre') {
+	    $inpre = 1;
+	    push @tex, "\\begin{verbatim}";
+	} elsif ($ev eq '/pre') {
+	    push @tex, "\\end{verbatim}\n";
+	    $inpre = undef;
+
+	} elsif ($ev eq 'table') {
+	    # $info is number of columns
+	    push @tex, "\\begin{tabular}{".('l' x $info)."}\n";
+	} elsif ($ev eq 'tr') {
+	    $anytd = undef;
+	} elsif ($ev eq 'td') {
+	    push @tex, " & " if $anytd;
+	    $anytd = 1;
+
+	} elsif ($ev eq 'img') {
+	    push @tex, "\\epsfbox{$info} % <<< FIXME\n";
+	} elsif ($ev eq 'link') {
+	    $info =~ s!^(mailto|news):!!;
+	    $info =~ s!^file:(//localhost)!!;
+	    # FIXME hyperlink
+	    push @tex, &Cwiki::LaTeX::quoteEnt($info);
+	} elsif ($ev eq 'wikilink') {
+	    $info =~ s!_! !g;
+	    $info =~ s!^ !!;
+	    $info =~ s! $!!;
+	    push @tex, &Cwiki::LaTeX::quoteEnt($info);
+
 	} else {
-	    $ret .= &_latexLevel(\@stack, \$para, "", 0);
-	    $ret .= $self->_wiki2latex($_);
+	    push @tex, "\n% FIXME >>> $ev\n";
 	}
-	$ret .= "\n";
-    }
-    $ret .= &_latexLevel(\@stack, \$para, "", 0);
-    return $ret;
+    });
+    return join('',@tex);
 }
 
-sub _latexLevel {
-    my($stack, $ppara, $code, $depth, $extra) = @_;
-    $$ppara = 0 if ($code eq "verbatim" || $stack->[-1] eq "verbatim");
-    my $ret = "";
-    # Have descended out of a level
-    while (@$stack > $depth+1 ||
-	   (@$stack == $depth+1 && $stack->[-1] ne $code)) {
-	my $tag = pop @$stack;
-	$ret .=  "\\end{$tag}\n";
-    }
+#-----------------------------------------------------------------------
+#	Convert page to MediaWiki format
+#
+#	  Cwiki				MediaWiki
+#
+#	Within a line:
+#	  http://example.com		http://example.com
+#	  http://example/com/a.jpg	[[Image:a.jpg]]
+#	  mailto@foo@exmple.com
+#	  '''bold'''			'''bold'''
+#	  ''italic''			''italic''
+#	  ^^code^^			<code>code</code>
+#	  ----
+#	  WikiName			[[WikiName]]
+#	  $NotWikiName			WikiName
+#
+#	Lines:
+#	  <tab>term:<tab>desc		; term : desc
+#
+#	  <tab>1. item			# item
+#
+#	  <tab>* item			* item
+#
+#	  * item			* item
+#	  ** subitem			** subitem
+#
+#	  <tab>col1<tab>col2<tab>col3	{|
+#	    or				| col1 || col2
+#	  <sp>| col1 | col2 |		|-
+#					|}
+#
+#	  <sp>preformatted		<code><pre>literal</pre></code>
+#	  |literal			<nowiki>literal</nowiki>
+#-----------------------------------------------------------------------
+my $mwMap = {
+    'p' => "\n",
+    '/p' => "\n",
+    'dd' => "",
+    '/dd' => "\n",
+    '/li' => "\n",
+    'table' => "\n{|\n",
+    '/table' => "|}\n",
+    '/td' => "",
+    '/tr' => "\n",
+    'strong' => "'''",
+    '/strong' => "'''",
+    'em' => "''",
+    '/em' => "''",
+    'code' => "<code>",
+    '/code' => "</code>",
+    'pre' => "\n",
+    '/pre' => "\n",
+    'prel' => " ",
+    '/prel' => "\n",
+};
 
-    ($ret .= "\\par\n", $$ppara = 0) if $$ppara;
-
-    # Going in - push on stack and emit tags
-    while (@$stack < $depth+1) {
-	push (@$stack, ($code)); 
-	$extra = '' unless defined $extra;
-	$ret .= "\\begin{$code}$extra\n";
-    }
-    
-    return $ret;
-}
-
-sub _wiki2latex {
+sub toMw {
     my($self, $text) = @_;
-    my $pat = $self->{'linkPattern'};
-    my $ret;
-    my $loop = 0;
-    while (my($url1,$url2,
-	      $b,
-	      $i,
-	      $c,
-	      $hr,
-	      $dollar,$link,@linkdata) =
-	   ($text =~ 
-	    /\b(https?|ftp|news|file|mailto):([^\s\)\],]+)|
-	    '''((?:''.*?''|.)*?)'''|
-	    ''(.*?)''|
-	    \^\^([^\^]+)\^\^|
-	    (-{4,})|
-	    (\$?)($pat)/x)) {
-	die "Cwiki::FormatAtisPlus::_wiki2latex looping" if ++$loop == 100;
-#	print "match: $&\n";
-	$ret .= &Cwiki::LaTeX::quoteEnt($`);
-	$text = $';
-	if ($url1) {
-	    if ($url1 eq 'http' && $url2 =~ /\.(gif|jpg|png)$/) {
-		$ret .= "\\epsfbox{$url2} % <<< FIXME";
+    eval "require Cwiki::Export";  die $@ if $@;
+    my @mw;
+    my $stack = '';
+    my $anytd;
+    $self->parsePage($text, sub {
+	my($ev,$info) = @_;
+	if ($ev eq 'CDATA') {
+	    push @mw, &Cwiki::Html::quoteEnt($info);
+
+	} elsif (defined(my $repl = $mwMap->{$ev})) {
+	    push @mw, $repl;
+
+	} elsif ($ev eq 'img') {
+	    push @mw, ('<img src="',
+		       &Cwiki::Html::quoteEnt($info),
+		       '" />');
+	} elsif ($ev eq 'link') {
+	    my($scheme,$rest) = $info =~ m!(\w+):(.*)!;
+	    if ($scheme eq 'openwiki') {
+		$rest =~ tr!_! !;
+		push @mw, "[[$rest]]";
+	    } elsif ($scheme =~ m!^(product|point|form78)$!) {
+		my $url = "http://meta.jet.efda.org/$scheme/$rest";
+		push @mw, "[$url $info]";
 	    } else {
-		my $scheme = "$url1:";
-		$url2 =~ s|^//localhost/|/| if $url1 eq 'file';
-		# Suppress URL scheme if implicitly clear to reader
-		$scheme = "" if $scheme =~ /news|mailto/;
-		$url2 = &Cwiki::LaTeX::quoteEnt($url2);
-		$ret .= "$scheme$url2";
+		push @mw, "[$info]";
 	    }
-	} elsif ($b) {
-	    $ret .= "\\textbf{" . $self->_wiki2latex($b) . "}";
-	} elsif ($i) {
-	    $ret .= "\\emph{" . $self->_wiki2latex($i) . "}";
-	} elsif ($c) {
-	    $ret .= "\\texttt{" . $self->_wiki2latex($c) . "}";
-	} elsif ($hr) {
-	    $ret .= "\\begin{center}\\rule{2in}{1pt}\\end{center}";
-	} elsif ($link) {
-	    $link =~ s/_/ /g;
-	    $link =~ s/^ //;  $link =~ s/ $//;
-	    $ret .= &Cwiki::LaTeX::quoteEnt($link);
+	} elsif ($ev eq 'wikilink') {
+	    push @mw, &Cwiki::Export::linkMw($info);
+
+	} elsif ($ev eq 'dl') {
+	    $stack .= ';';
+	    push @mw, "\n";
+	} elsif ($ev eq '/dl') {
+	    chop $stack;
+	} elsif ($ev eq 'dt') {
+	    push @mw, "$stack ";
+	} elsif ($ev eq '/dt') {
+	    push @mw, ': ';
+
+	} elsif ($ev eq 'ol') {
+	    $stack .= '#';
+	    push @mw, "\n";
+	} elsif ($ev eq '/ol') {
+	    chop $stack;
+	} elsif ($ev eq 'ul') {
+	    $stack .= '*';
+	    push @mw, "\n";
+	} elsif ($ev eq '/ul') {
+	    chop $stack;
+	} elsif ($ev eq 'li') {
+	    push @mw, "$stack ";
+
+	} elsif ($ev eq 'tr') {
+	    push @mw, "|-\n";
+	    $anytd = undef;
+	} elsif ($ev eq 'td') {
+	    push @mw, $anytd ? " || " : "| ";
+	    $anytd = 1;
+
+	} else {
+	    push @mw, "FIXME($ev)";
 	}
-    }
-    $ret .= &Cwiki::LaTeX::quoteEnt($text);
-    return $ret;
+    });
+    return join('', @mw);
 }
 
 #-----------------------------------------------------------------------
