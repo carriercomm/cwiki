@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: ServerNeat.pm,v 1.3 2006/12/07 10:08:45 pythontech Exp $
+#	$Id: ServerNeat.pm,v 1.1 2007/04/16 15:18:49 wikiwiki Exp wikiwiki $
 #	Server configuration - neat
 #	Copyright (C) 2006  Python Technology Limited
 #
@@ -46,11 +46,13 @@ sub url {
     my($self, $method, %override) = @_;
     my $topic = $override{'Topic'} || $::topic;
     my $url = $self->{'BaseUrl'};
+    if ($override{'Full'} && defined $self->{'FullBaseUrl'}) {
+	$url = $self->{'FullBaseUrl'};
+    }
     unless ($method eq 'view') {
 	$url .= '/=' . $method;
     }
     unless ($method eq 'search') {
-	my $topic = $override{'Topic'} || $::topic;
 	$url .= '/' . uq($topic);
     }
     return $url;
@@ -76,8 +78,8 @@ sub action_topic {
     my $path = $query->path_info;
     if (my($method,$topic) = $path =~ m!^/=([a-z]+)/([^/]+)$!) {
 	return ($method, ux($topic));
-    } elsif ($path eq '/=search') {
-	return ('search', undef);
+    } elsif (my($gmethod) = $path =~ m!^/=(search|export)$!) {
+	return ($gmethod, undef);
     } elsif (my($topic) = $path =~ m!^/([^=/][^/]*)$!) {
 	return ('view', ux($topic));
     } elsif ($path eq '') {

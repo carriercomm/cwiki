@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: NotifySendmail.pm,v 1.2 2006/12/08 11:32:16 pythontech Exp $
+#	$Id: NotifySendmail.pm,v 1.1 2010/06/25 09:43:50 wikiwiki Exp wikiwiki $
 #	Notify user of change - via sendmail
 #	Copyright (C) 2006  Python Technology Limited
 #
@@ -52,6 +52,10 @@ sub notify {
     } elsif ($event eq 'rename') {
 	$subject .= "Topic $topic has been renamed to $info->{'newname'}";
 	$body = "User $user has renamed topic $topic to $info->{'newname'}\n";
+    } elsif ($event eq 'migrate') {
+	$subject .= "Topic $topic has been migrated";
+	$body = "User $user has migrated topic $topic\n" .
+	    "It is now located at $info->{'destination'}\n";
     } else {
 	$subject .= "event=$event";
 	$body = "$subject\n" . map {"$_=$info->{$_}\n"} keys %$info;

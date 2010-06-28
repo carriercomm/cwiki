@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: PageArchive.pm,v 1.3 2006/12/07 10:07:54 pythontech Exp $
+#	$Id: PageArchive.pm,v 1.1 2010/06/25 09:38:11 wikiwiki Exp wikiwiki $
 #	Simple Page Archive
 #	Copyright (C) 2000-2005  Python Technology Limited
 #
@@ -102,6 +102,19 @@ sub updateTopic {
 sub renameTopic {
     my($self, $topic, $newname) = @_;
     # Update any links (including self-links)
+    $self->renameLinks($topic, $newname);
+    
+    my $filename = &::tokenSubst($self->{'pattern'}, Topic => $topic);
+    my $newfilename = &::tokenSubst($self->{'pattern'}, Topic => $newname);
+    rename($filename,$newfilename) || die "Rename failed: $!\n";
+}
+
+#-----------------------------------------------------------------------
+#	Update links to pages which reference a topic
+#-----------------------------------------------------------------------
+sub renameLinks {
+    my($self, $topic, $newname) = @_;
+    # Update any links (including self-links)
     my $back = $self->backlinks($topic);
     foreach my $ref (keys %$back) {
 #	print STDERR "backlink=$ref\n";
@@ -111,10 +124,6 @@ sub renameTopic {
 	    $self->updateTopic($ref, $data);
 	}
     }
-    
-    my $filename = &::tokenSubst($self->{'pattern'}, Topic => $topic);
-    my $newfilename = &::tokenSubst($self->{'pattern'}, Topic => $newname);
-    rename($filename,$newfilename) || die "Rename failed: $!\n";
 }
 
 #-----------------------------------------------------------------------

@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: UiPtTemplates.pm,v 1.3 2006/12/07 10:09:37 pythontech Exp $
+#	$Id: UiPtTemplates.pm,v 1.1 2010/06/25 15:15:58 wikiwiki Exp wikiwiki $
 #	Presentation - templates
 #	Copyright (C) 2005  Python Technology Limited
 #
@@ -136,8 +136,11 @@ sub _common {
 	latexurl => $::wiki->server->url('latex'),
 	watchurl => $::wiki->server->url('watch'),
 	unwatchurl => $::wiki->server->url('unwatch'),
+	mwtexturl => $::wiki->server->url('mwtext'),
+	migrateurl => $::wiki->server->url('migrate'),
 	watchers => $watchers,
 	watching => $watching,
+	is_manager => ($::user eq 'chah'), # FIXME specifics!
     };
     (my $tmpl = $self->{'filespec'}) =~ s!%s!$tmpl!e;
     my $html = $self->{'templater'}->process_file($tmpl,
