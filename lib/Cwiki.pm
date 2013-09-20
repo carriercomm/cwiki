@@ -201,6 +201,11 @@ sub webquery {
 	    }
 	}
 
+    } elsif ($::method eq 'export') {
+	eval "require Cwiki::Export";
+	die $@ if $@;
+	&Cwiki::Export::exportMw($self, $response);
+
 	#--- Remaining methods require a valid topic name (may not exist)
     } elsif ($::topic !~ /^$linkPattern$/) {
 	$response->write($::wiki->ui->error("Invalid topic name $::topic"));
@@ -276,7 +281,19 @@ sub webquery {
 
     } elsif ($::method eq 'view') {
 	my $data = $::wiki->archive->getTopic($::topic);
-	$response->write($::wiki->ui->view($::wiki->fmt->toHtml($data->{'text'})));
+	if (defined(my $red = $data->{'redirect'})) {
+	    my $url;
+	    if (my($oname) = $red =~ m!^openwiki:(.*)!) {
+		$url = "http://users.jet.efda.org/openwiki/index.php/$oname";
+	    } elsif ($red =~ /^\w+:/) {
+		$url = $red;
+	    } else {
+		$url = $::wiki->server->url('view', Topic => $red);
+	    }
+	    $response->redirect($url);
+	} else {
+	    $response->write($::wiki->ui->view($::wiki->fmt->toHtml($data->{'text'})));
+	}
 
     } elsif ($::method eq 'askrename') {
 	$::user = $query->require_login
@@ -314,8 +331,51 @@ sub webquery {
     } elsif ($::method eq 'latex') {
 	my $data = $::wiki->archive->getTopic($::topic);
 	my $latex = $::wiki->fmt->toLaTeX($data->{'text'});
-	$response->set_type('application/x-tex');
+	#$response->set_type('application/x-tex');
+	$response->set_type('text/plain');
 	$response->write($latex);
+
+    } elsif ($::method eq 'migrate') {
+	# Migrate to openwiki
+	eval "require Cwiki::Export";
+	die $@ if $@;
+	$::user = $query->require_login
+	    or return;
+	my $data = $::wiki->archive->getTopic($::topic);
+	my $mname = Cwiki::Export::topicMw($::topic);
+	(my $mlink = $mname) =~ s! !_!g;
+	my $prefix = $query->param('prefix');
+	my $newtag = "openwiki:$prefix$mlink";
+	$data->{'redirect'} = $newtag;
+	$::wiki->archive->updateTopic($::topic, $data);
+	$::wiki->archive->renameLinks($::topic, $newtag);
+	$::wiki->log->record($::topic, time, $::user, 'migrate', $newtag);
+	if ($::wiki->notifier) {
+	    $::wiki->notifier->notify($data->{'watchers'},
+				      'migrate',
+				      {user => $::user,
+				       topic => $::topic,
+				       destination => $newtag});
+	}
+	$response->redirect($::wiki->server->url('view'));
+
+    } elsif ($::method eq 'mw') {
+	eval "require Cwiki::Export";
+	die $@ if $@;
+	my $xpage = Cwiki::Export::pageMw($::wiki, $::topic);
+	my $xml = ('<mediawiki xml:lang="en">' .
+		   $xpage .
+		   '</mediawiki>');
+	$response->set_type('text/plain');
+	$response->write($xml);
+
+    } elsif ($::method eq 'mwtext') {
+	eval "require Cwiki::Export";
+	die $@ if $@;
+	my $data = $::wiki->archive->getTopic($::topic);
+	my $mtext = $::wiki->fmt->toMw($data->{'text'});
+	$response->set_type('text/plain');
+	$response->write($mtext);
 
     } elsif ($::method eq 'watch') {
 	$::user = $query->require_login
