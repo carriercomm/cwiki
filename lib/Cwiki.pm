@@ -189,9 +189,15 @@ sub webquery {
 	    my $qsearch = quotemeta($search);
 	    my @list;
 	    foreach my $pg ($::wiki->archive->index) {
-		my $data = $::wiki->archive->getTopic($pg);
-		if ($pg =~ /$qsearch/i || $data->{'text'} =~ /$qsearch/i) {
-		    push(@list, $pg);
+		if ($pg =~ /$qsearch/i) {
+		    push @list, $pg;
+		} else {
+		    my $data = $::wiki->archive->getTopic($pg);
+		    if ($data->{'redirect'} eq '') {
+			if ($data->{'text'} =~ /$qsearch/i) {
+			    push(@list, $pg);
+			}
+		    }
 		}
 	    }
 	    if (@list == 0) {

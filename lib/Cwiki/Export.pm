@@ -79,10 +79,25 @@ sub linkMw {
     if ($convertAll) {
 	return "[[$mwtopic]]";
     } elsif ($::wiki->archive->topicExists($topic)) {
-	my $url = $::wiki->server->url('view',
-				       Topic => $topic,
-				       Full => 1);
-	return "[$url $mwtopic]";
+	my $data = $::wiki->archive->getTopic($topic);
+	if (defined(my $red = $data->{'redirect'})) {
+	    if (my($oname) = $red =~ m!^openwiki:(.*)!) {
+		return "[[$oname]]";
+	    } elsif ($red =~ /^\w+:/) {
+		return "[$red $mwtopic]";
+	    } else {
+		$topic = $red;
+	    }
+	}
+	my $tmpl = $::wiki->{'mwTemplate'};
+	if ($tmpl ne '') {
+	    return "{{$tmpl|$topic|$mwtopic}}";
+	} else {
+	    my $url = $::wiki->server->url('view',
+					   Topic => $topic,
+					   Full => 1);
+	    return "[$url $mwtopic]";
+	}
     } else {
 	return $mwtopic;
     }
