@@ -1,5 +1,5 @@
 #=======================================================================
-#	$Id: FormatAtisPlus.pm,v 1.2 2010/06/25 15:12:55 wikiwiki Exp $
+#	$Id: FormatAtisPlus.pm,v 1.2 2010/06/25 15:12:55 wikiwiki Exp wikiwiki $
 #	Wiki formatting module
 #	Copyright (C) 2000-2005  Python Technology Limited
 #
@@ -558,6 +558,9 @@ sub toMw {
 	} elsif ($ev eq 'td') {
 	    push @mw, $anytd ? " || " : "| ";
 	    $anytd = 1;
+
+	} elsif ($ev eq 'hr') {
+	    push @mw, "\n----\n";
 
 	} else {
 	    push @mw, "FIXME($ev)";
